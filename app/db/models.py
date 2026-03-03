@@ -11,17 +11,24 @@ user_challenge = Table(
     Column("challenge_id", Integer, ForeignKey("challenge.id"), primary_key=True),
 )
 
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
 
     # 1:N (User -> CheckIn)
-    checkins = relationship("CheckIn", back_populates="user", cascade="all, delete-orphan")
+    checkins = relationship(
+        "CheckIn", back_populates="user", cascade="all, delete-orphan"
+    )
 
     # N:N (User <-> Challenge)
-    challenge = relationship("Challenge", secondary=user_challenge, back_populates="users")
+    challenge = relationship(
+        "Challenge", secondary=user_challenge, back_populates="users"
+    )
 
 
 class CheckIn(Base):
@@ -29,7 +36,7 @@ class CheckIn(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     user = relationship("User", back_populates="checkins")
 

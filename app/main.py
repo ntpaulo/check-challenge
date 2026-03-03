@@ -1,12 +1,59 @@
-from unicodedata import name
-from app.db.models import User, Challenge, CheckIn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, EmailStr
+from passlib.context import CryptContext
+
+from app.db.models import User, Challenge, CheckIn
 from app.db.session import SessionLocal, engine, Base
 
 app = FastAPI()
 
+# Auth (hash de senha)
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    # gera hash seguro (argon2)
+    return pwd_context.hash(password)
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+@app.post("/auth/register")
+def register(data: RegisterRequest):
+    db = SessionLocal()
+    try:
+        # 1) Verifica se já existe usuário com esse email
+        existing = db.query(User).filter(User.email == data.email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email já cadastrado")
+
+        # 2) Cria o usuário com senha hasheada
+        user = User(
+            name=data.name,
+            email=data.email,
+            hashed_password=hash_password(data.password),
+        )
+
+        # 3) Salva no banco
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {"id": user.id, "name": user.name, "email": user.email}
+    except Exception:
+        db.rollback
+        raise
+    finally:
+        db.close()
+
+
 Base.metadata.create_all(bind=engine)
+
 
 @app.get("/", response_class=HTMLResponse)
 def root():
@@ -66,6 +113,7 @@ def root():
     </html>
     """
 
+
 @app.post("/users")
 def create_user(name: str):
     db = SessionLocal()
@@ -78,14 +126,16 @@ def create_user(name: str):
     finally:
         db.close()
 
+
 @app.get("/users")
 def list_users():
     db = SessionLocal()
-    try: 
+    try:
         users = db.query(User).all()
         return users
     finally:
         db.close()
+
 
 @app.post("/challenge")
 def create_challenge(title: str, user_ids: list[int]):
@@ -95,28 +145,28 @@ def create_challenge(title: str, user_ids: list[int]):
 
         if len(users) != len(set(user_ids)):
             raise HTTPException(
-                status_code = 400,
-                detail= "Algum user_id é inválido ou duplicado"
+                status_code=400, detail="Algum user_id é inválido ou duplicado"
             )
-            
+
         challenge = Challenge(title=title)
         challenge.users = users
         db.add(challenge)
         db.commit()
         db.refresh(challenge)
         return {
-        "id": challenge.id,
-        "title": challenge.title,
-        "user_ids": [u.id for u in challenge.users]
+            "id": challenge.id,
+            "title": challenge.title,
+            "user_ids": [u.id for u in challenge.users],
         }
-        
+
     except Exception:
         db.rollback()
         raise
-    
+
     finally:
         db.close()
-        
+
+
 @app.get("/challenges")
 def list_challenges():
     db = SessionLocal()
@@ -126,13 +176,14 @@ def list_challenges():
             {
                 "id": c.id,
                 "title": c.title,
-                "users": [{"id": u.id, "name": u.name} for u in c.users]
+                "users": [{"id": u.id, "name": u.name} for u in c.users],
             }
             for c in challenges
         ]
     finally:
         db.close()
-        
+
+
 @app.post("/checkin")
 def create_checkin(user_id: int):
     db = SessionLocal()
@@ -148,8 +199,17 @@ def create_checkin(user_id: int):
             "id": checkin.id,
             "user_name": user.name,
             "user_id": checkin.user_id,
-            "created_at": checkin.created_at
-            
+            "created_at": checkin.created_at,
         }
-    finally:        
+    finally:
+        db.close()
+
+
+@app.get("/checkins")
+def list_checkins():
+    db = SessionLocal()
+    try:
+        checkins = db.query(CheckIn).all()
+        return checkins
+    finally:
         db.close()
