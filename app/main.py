@@ -10,7 +10,6 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 
-
 from app.db.models import User, Challenge, CheckIn
 from app.db.session import SessionLocal, engine, Base
 
@@ -72,7 +71,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         db.close()
 
 
-@app.get("/me")
+@app.get("/users/me", tags=["Auth"])
 def read_me(current_user: User = Depends(get_current_user)):
     return {
         "id": current_user.id,
