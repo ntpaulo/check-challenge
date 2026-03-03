@@ -1,20 +1,46 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import HTMLResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
+
+from jose import jwt, JWTError
+import os
+from dotenv import load_dotenv
+from datetime import datetime, timedelta, timezone
+
 
 from app.db.models import User, Challenge, CheckIn
 from app.db.session import SessionLocal, engine, Base
 
 app = FastAPI()
 
+load_dotenv()
+
 # Auth (hash de senha)
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
 def hash_password(password: str) -> str:
     # gera hash seguro (argon2)
     return pwd_context.hash(password)
+
+
+# verifica se a senha informada é a mesma da senha hash no banco
+def verify_password(plain_password: str, hash_password: str) -> bool:
+    return pwd_context.verify(plain_password, hash_password)
+
+
+def create_acess_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 class RegisterRequest(BaseModel):
@@ -23,7 +49,59 @@ class RegisterRequest(BaseModel):
     password: str
 
 
-@app.post("/auth/register")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        if user is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return user
+    finally:
+        db.close()
+
+
+@app.get("/me")
+def read_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
+    }
+
+
+@app.post("/auth/login", tags=["Auth"])
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    db = SessionLocal()
+    try:
+        # Busca usuário no banco
+        user = db.query(User).filter(User.email == form_data.username).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Email ou senha inválidos")
+        # verifica a senha
+        if not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Email ou senha inválidos")
+
+        # gera token
+        token = create_acess_token({"sub": str(user.id)})
+
+        return {"access_token": token, "type_token": "bearer"}
+    finally:
+        db.close()
+
+
+@app.post("/auth/register", tags=["Auth"])
 def register(data: RegisterRequest):
     db = SessionLocal()
     try:
@@ -55,7 +133,7 @@ def register(data: RegisterRequest):
 Base.metadata.create_all(bind=engine)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["check-challenge"])
 def root():
     return """
     <html>
@@ -114,7 +192,7 @@ def root():
     """
 
 
-@app.post("/users")
+@app.post("/users", tags=["check-challenge"])
 def create_user(name: str):
     db = SessionLocal()
     try:
@@ -127,7 +205,7 @@ def create_user(name: str):
         db.close()
 
 
-@app.get("/users")
+@app.get("/users", tags=["check-challenge"])
 def list_users():
     db = SessionLocal()
     try:
@@ -137,7 +215,7 @@ def list_users():
         db.close()
 
 
-@app.post("/challenge")
+@app.post("/challenge", tags=["check-challenge"])
 def create_challenge(title: str, user_ids: list[int]):
     db = SessionLocal()
     try:
@@ -167,7 +245,7 @@ def create_challenge(title: str, user_ids: list[int]):
         db.close()
 
 
-@app.get("/challenges")
+@app.get("/challenges", tags=["check-challenge"])
 def list_challenges():
     db = SessionLocal()
     try:
@@ -184,7 +262,7 @@ def list_challenges():
         db.close()
 
 
-@app.post("/checkin")
+@app.post("/checkin", tags=["check-challenge"])
 def create_checkin(user_id: int):
     db = SessionLocal()
     try:
@@ -205,7 +283,7 @@ def create_checkin(user_id: int):
         db.close()
 
 
-@app.get("/checkins")
+@app.get("/checkins", tags=["check-challenge"])
 def list_checkins():
     db = SessionLocal()
     try:
