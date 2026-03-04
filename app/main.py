@@ -201,11 +201,15 @@ def list_users(current_user: User = Depends(get_current_user)):
         db.close()
 
 
+class ChallengeRequest(BaseModel):
+    title: str
+    duration: int
+    start_date: str
+
+
 @app.post("/challenge", tags=["check-challenge"])
 def create_challenge(
-    title: str,
-    duration: int,
-    start_date: str,
+    challenge: ChallengeRequest,
     current_user: User = Depends(get_current_user),
 ):
     db = SessionLocal()
@@ -214,9 +218,9 @@ def create_challenge(
         user = db.query(User).filter(User.id == current_user.id).first()
 
         challenge = Challenge(
-            title=title,
-            duration=duration,
-            start_date=start_date,
+            title=challenge.title,
+            duration=challenge.duration,
+            start_date=challenge.start_date,
         )
         challenge.users.append(user)
         db.add(challenge)
