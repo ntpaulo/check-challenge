@@ -191,21 +191,8 @@ def root():
     """
 
 
-@app.post("/users", tags=["check-challenge"])
-def create_user(name: str):
-    db = SessionLocal()
-    try:
-        user = User(name=name)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return user
-    finally:
-        db.close()
-
-
 @app.get("/users", tags=["check-challenge"])
-def list_users():
+def list_users(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         users = db.query(User).all()
@@ -215,25 +202,31 @@ def list_users():
 
 
 @app.post("/challenge", tags=["check-challenge"])
-def create_challenge(title: str, user_ids: list[int]):
+def create_challenge(
+    title: str,
+    duration: int,
+    start_date: str,
+    current_user: User = Depends(get_current_user),
+):
     db = SessionLocal()
+
     try:
-        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        user = db.query(User).filter(User.id == current_user.id).first()
 
-        if len(users) != len(set(user_ids)):
-            raise HTTPException(
-                status_code=400, detail="Algum user_id é inválido ou duplicado"
-            )
-
-        challenge = Challenge(title=title)
-        challenge.users = users
+        challenge = Challenge(
+            title=title,
+            duration=duration,
+            start_date=start_date,
+        )
+        challenge.users.append(user)
         db.add(challenge)
         db.commit()
         db.refresh(challenge)
         return {
             "id": challenge.id,
             "title": challenge.title,
-            "user_ids": [u.id for u in challenge.users],
+            "duration": challenge.duration,
+            "start_date": challenge.start_date,
         }
 
     except Exception:
@@ -245,24 +238,31 @@ def create_challenge(title: str, user_ids: list[int]):
 
 
 @app.get("/challenges", tags=["check-challenge"])
-def list_challenges():
+def list_challenges(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
-        challenges = db.query(Challenge).all()
-        return [
-            {
-                "id": c.id,
-                "title": c.title,
-                "users": [{"id": u.id, "name": u.name} for u in c.users],
-            }
-            for c in challenges
-        ]
+        user = db.query(User).filter(User.id == current_user.id).first()
+
+        challenges = []
+
+        for c in user.challenge:
+            challenges.append(
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "duration": c.duration,
+                    "start_date": c.start_date,
+                    "users": [{"id": u.id, "name": u.name} for u in c.users],
+                }
+            )
+
+        return challenges
     finally:
-        db.close()
+        db.close
 
 
 @app.post("/checkin", tags=["check-challenge"])
-def create_checkin(user_id: int):
+def create_checkin(user_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -283,7 +283,7 @@ def create_checkin(user_id: int):
 
 
 @app.get("/checkins", tags=["check-challenge"])
-def list_checkins():
+def list_checkins(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         checkins = db.query(CheckIn).all()

@@ -46,5 +46,7 @@ class Challenge(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
+    duration = Column(Integer, nullable=False)
+    start_date = Column(String, nullable=False)
 
     users = relationship("User", secondary=user_challenge, back_populates="challenge")
