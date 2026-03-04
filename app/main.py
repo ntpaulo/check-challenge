@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
@@ -15,7 +16,19 @@ from app.db.session import SessionLocal, engine, Base
 
 app = FastAPI()
 
+# CORS Configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "*"
+    ],  # Permite todas as origens (trocar por lista específica em produção)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 load_dotenv()
+
 
 # Auth (hash de senha)
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
