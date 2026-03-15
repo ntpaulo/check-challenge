@@ -1,7 +1,7 @@
 from sqlalchemy import Table, Column, Integer, String, ForeignKey, DateTime
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from .session import Base
+from app.config.db import Base
 
 # tabela de associação N:N (User <-> Challenge)
 user_challenge = Table(
